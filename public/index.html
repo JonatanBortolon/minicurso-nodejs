@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <link rel="stylesheet" href="style.css" />
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WhatsApp Clone</title>
+  </head>
+  <body>
+    <div class="App">
+      <div class="myInfos">
+        <input
+          class="file"
+          id="file"
+          type="file"
+          accept="image/png, image/jpeg"
+        />
+        <img class="infoPhoto" id="infoPhoto" />
+        <p class="infoId" id="infoId"></p>
+      </div>
+      <div class="contactList">
+        <div class="list" id="list"></div>
+      </div>
+      <div class="contactInfo"></div>
+      <div class="contactChat" id="contactChat">
+        <div class="chatArea"></div>
+      </div>
+    </div>
+  </body>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async function () {
+      var socket = io().connect();
+
+      let user = {};
+      let chats = {};
+      let openChat = '';
+
+      let infoId = document.getElementById('infoId');
+      let infoPhoto = document.getElementById('infoPhoto');
+      let list = document.getElementById('list');
+      let contactChat = document.getElementById('contactChat');
+      let fileInput = document.getElementById('file');
+
+      if (localStorage.getItem('USER')) {
+        user = JSON.parse(localStorage.getItem('USER'));
+
+        fileInput.addEventListener('change', async function () {
+          let photo = this.files[0];
+          let reader = new FileReader();
+
+          reader.readAsDataURL(photo);
+          reader.onloadend = async function () {
+            await fetch('uploadavatar', {
+              headers: { 'Content-Type': 'application/json' },
+              method: 'POST',
+              body: JSON.stringify({
+                id: user.id,
+                base64: reader.result,
+              }),
+            }).then(function () {
+              location.reload();
+            });
+          };
+        });
+
+        infoId.innerText = user.id;
+        infoPhoto.alt = user.id;
+        infoPhoto.src = '/avatar/' + user.id + '.jpg';
+
+        infoPhoto.addEventListener('click', function () {
+          var elem = document.getElementById('file');
+
+          if (elem && document.createEvent) {
+            let evt = document.createEvent('MouseEvents');
+
+            evt.initEvent('click', true, false);
+            elem.dispatchEvent(evt);
+          }
+        });
+
+        chats = JSON.parse(localStorage.getItem('CHATS'));
+
+        socket.emit('setup', JSON.parse(localStorage.getItem('user')));
+      } else {
+        await fetch('/register').then(function (resp) {
+          resp.json().then(function (response) {
+            localStorage.setItem('USER', JSON.stringify(response));
+            localStorage.setItem('CHATS', JSON.stringify({}));
+
+            user = response;
+
+            infoId.innerText = user.id;
+            infoPhoto.alt = user.id;
+            infoPhoto.src = '/avatar/' + user.id + '.jpg';
+
+            socket.emit('setup', response);
+          });
+        });
+      }
+
+      function renderChat() {
+        let chatArea = document.getElementById('chatArea');
+
+        chatArea.innerHTML = '';
+
+        if (chats[openChat] !== undefined) {
+          chats[openChat]['chat'].map(function (chat) {
+            let messageBalloon = document.createElement('div');
+            messageBalloon.classList.add('message');
+            messageBalloon.style.backgroundColor =
+              chat.from === user.id ? '#d2d2d2' : '#727bff';
+            messageBalloon.style.marginLeft =
+              chat.from === user.id ? 'auto' : 'inherit';
+            messageBalloon.style.marginRight =
+              chat.from !== user.id ? 'auto' : 'inherit';
+            messageBalloon.innerText = chat.content;
+
+            chatArea.innerHTML += messageBalloon.outerHTML;
+          });
+        }
+      }
+
+      function changeOpenChat() {
+        contactChat.innerHTML = '';
+
+        if (openChat === '') {
+          let title = document.createElement('h1');
+          title.innerText = 'Bem vindo ao WhatsApp Clone!';
+
+          let idInput = document.createElement('input');
+          idInput.id = 'idInput';
+          idInput.setAttribute('type', 'text');
+          idInput.placeholder = 'Id do usuario';
+
+          let messageInput = document.createElement('input');
+          messageInput.id = 'messageInput';
+          messageInput.setAttribute('type', 'text');
+          messageInput.placeholder = 'Mensagem';
+
+          let sendButton = document.createElement('button');
+          sendButton.innerText = 'Enviar Mensagem';
+          sendButton.addEventListener(
+            'click',
+            function () {
+              let id = idInput.value;
+              let message = messageInput.value;
+
+              socket.emit('chat', {
+                to: id,
+                content: message,
+              });
+
+              let chatHandler = JSON.parse(localStorage.getItem('CHATS'));
+
+              if (chatHandler[id] === undefined) {
+                chatHandler[id] = { chat: [] };
+              }
+
+              chatHandler[id]['chat'].push({
+                from: user.id,
+                content: message,
+              });
+
+              localStorage.setItem('CHATS', JSON.stringify(chatHandler));
+              chats = chatHandler;
+              renderContactList();
+            },
+            false
+          );
+
+          contactChat.appendChild(sendButton);
+          contactChat.insertBefore(messageInput, contactChat.children[0]);
+          contactChat.insertBefore(idInput, contactChat.children[0]);
+          contactChat.insertBefore(title, contactChat.children[0]);
+        } else {
+          let chatArea = document.createElement('div');
+          chatArea.id = 'chatArea';
+          chatArea.classList.add('chatArea');
+
+          let inputArea = document.createElement('div');
+          inputArea.classList.add('inputArea');
+
+          let chatInput = document.createElement('input');
+          chatInput.id = 'chatInput';
+          chatInput.classList.add('input');
+          chatInput.setAttribute('type', 'text');
+
+          let chatButton = document.createElement('button');
+          chatButton.classList.add('sendButton');
+          chatButton.innerText = '>';
+          chatButton.addEventListener('click', function () {
+            let message = chatInput.value;
+
+            socket.emit('chat', { to: openChat, content: message });
+            let chatHandler = JSON.parse(localStorage.getItem('CHATS'));
+
+            chatHandler[openChat]['chat'].push({
+              from: user.id,
+              content: message,
+            });
+
+            localStorage.setItem('CHATS', JSON.stringify(chatHandler));
+            chats = chatHandler;
+            renderChat();
+          });
+
+          inputArea.appendChild(chatButton);
+          inputArea.insertBefore(chatInput, inputArea.children[0]);
+
+          contactChat.appendChild(inputArea);
+          contactChat.insertBefore(chatArea, contactChat.children[0]);
+
+          renderChat();
+        }
+      }
+      changeOpenChat();
+
+      function renderContactList() {
+        list.innerHTML = '';
+
+        Object.keys(chats).forEach(function (key) {
+          let contact = document.createElement('div');
+          contact.classList.add('contact');
+          contact.id = key;
+
+          if (openChat === key) {
+            contact.style.borderLeft = '5px solid #727bff';
+          } else {
+            contact.style.borderLeft = 'none';
+          }
+
+          contact.addEventListener(
+            'click',
+            function () {
+              if (openChat === key) {
+                openChat = '';
+              } else {
+                openChat = key;
+              }
+
+              changeOpenChat();
+              renderContactList();
+            },
+            false
+          );
+
+          let contactPhoto = document.createElement('img');
+          contactPhoto.classList.add('contactPhoto');
+          contactPhoto.src = '/avatar/' + key + '.jpg';
+
+          let contactId = document.createElement('p');
+          contactId.classList.add('contactId');
+          contactId.innerText = key;
+
+          contact.innerHTML = contactId.outerHTML + contactPhoto.outerHTML;
+
+          if (list.children.length > 0) {
+            list.insertBefore(contact, list.children[0]);
+          } else {
+            list.appendChild(contact);
+          }
+        });
+      }
+      renderContactList();
+
+      socket.on('chat', function (chat) {
+        let chatHandler = JSON.parse(localStorage.getItem('CHATS'));
+
+        chats = chatHandler;
+
+        if (chatHandler[chat.from] === undefined) {
+          chatHandler[chat.from] = { chat: [] };
+          renderContactList();
+        }
+
+        chatHandler[chat.from]['chat'].push({
+          from: chat.from,
+          content: chat.content,
+        });
+
+        localStorage.setItem('CHATS', JSON.stringify(chatHandler));
+
+        if (openChat === chat.from) {
+          renderChat();
+        }
+      });
+    });
+  </script>
+</html>
