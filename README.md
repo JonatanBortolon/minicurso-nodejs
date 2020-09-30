@@ -8,6 +8,8 @@ Introdução ao NodeJs apresentando alguns fundamentos para começar o desenvolv
 
 ## Como Instalar
 
+Crie um arquivo .env na pasta raiz do projeto e coloque a variavel PORT= recebendo o valor desejado. Ex: PORT=1234.
+
     NPM -> npm i
     YARN -> yarn
 
